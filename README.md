@@ -1,6 +1,6 @@
 # Yet Another Chip-8 Emulator [WIP]
 
-A simple CHIP-8 emulator written in `C++`. This project was built to learn about emulator development and computer architecture by implementing the CHIP-8 virtual machine from scratch.
+A simple CHIP-8 emulator written in `C++` using `raylib`. This project was built to learn about emulator development and computer architecture by implementing the CHIP-8 virtual machine from scratch.
 
 <p align="center">
   <img src="assets/image.png" alt="Logo" width="300" height="200">
@@ -67,6 +67,9 @@ A simple CHIP-8 emulator written in `C++`. This project was built to learn about
      
 ### REFERENCES
 http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
+
 https://en.wikipedia.org/wiki/CHIP-8
+
 https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 
+https://github.com/raysan5/raylib
