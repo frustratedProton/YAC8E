@@ -2,6 +2,10 @@
 
 A simple CHIP-8 emulator written in `C++`. This project was built to learn about emulator development and computer architecture by implementing the CHIP-8 virtual machine from scratch.
 
+<p align="center">
+  <img src="assets/image.png" alt="Logo" width="300" height="200">
+</p>
+
 ## Architecture
 
 ### Memory

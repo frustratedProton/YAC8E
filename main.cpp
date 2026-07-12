@@ -81,7 +81,7 @@ bool loadRom(Chip8 &chip8, const std::string &filename) {
 // fetch/decode/execute loop
 void emulateCycle(Chip8 &chip8) {
   // fetch operation
-  // an instruction is 2 bytes
+  // opcode is 16 bits (2 bytes)
   // get 2 succeessive bytes from memory
   // and combine them into one 16bit instruction
   const uint16_t opcode{static_cast<uint16_t>((chip8.memory[chip8.PC] << 8) |
@@ -91,20 +91,123 @@ void emulateCycle(Chip8 &chip8) {
   chip8.PC += 2;
 
   // decode and exec loop
+  // the first nibble deterines the instruction family
+  // remaining nibbles are interpreted as X, Y, N, NN or NNN
+  // nibble or half-bytes are first hexadecimal numbers
+  const uint16_t nnn{
+      static_cast<uint16_t>(opcode & 0x0FFF)}; // lowest 12 bits (address)
+  const uint8_t x{
+      static_cast<uint8_t>((opcode & 0x0F00) >> 8)}; // 2nd nibble (register VX)
+  const uint8_t y{
+      static_cast<uint8_t>((opcode & 0x00F0) >> 4)}; // 3rd nibble (register VY)
+  const uint8_t n{static_cast<uint8_t>(opcode & 0x000F)};  // last nibble
+  const uint8_t nn{static_cast<uint8_t>(opcode & 0x00FF)}; // last byte
+
   switch (opcode & 0xF000) {
   case 0x0000:
-    // TODO: implement 0x000
+    if (opcode == 0x00E0) {
+      // 00E0 - clear screen
+      // turn pixel off
+      chip8.display.fill(0);
+      std::cout << "CLS\n";
+    } else if (opcode == 0x00EE) {
+      // 00EE - return from subroutine
+      chip8.SP--;
+      chip8.PC = chip8.stack[chip8.SP];
+      std::cout << "RET\n";
+    }
     break;
+
   case 0x1000:
-    // TODO: implement jump
+    // 1NNN - JUMP to address NNN
+    chip8.PC = nnn;
+    std::cout << "JP 0x" << std::hex << nnn << '\n';
     break;
+
+  case 0x2000:
+    // 2NNN - call subroutine at NNN
+    // first push current PC to stack
+    chip8.stack[chip8.SP] = chip8.PC;
+    chip8.SP++;
+    // set pc to nnn
+    chip8.PC = nnn;
+    std::cout << "CALL 0x" << std::hex << nnn << '\n';
+    break;
+
   case 0x6000:
-    // TODO: implement set register
+    // 6XNN - set VX to NN
+    chip8.V[x] = nn;
+    std::cout << "LD V" << std::hex << static_cast<int>(x) << ", 0x"
+              << static_cast<int>(nn) << '\n';
     break;
+
+  case 0x7000:
+    // 7XNN - add NN to VX
+    chip8.V[x] += nn;
+    std::cout << "ADD V" << std::hex << static_cast<int>(x) << ", 0x"
+              << static_cast<int>(nn) << '\n';
+    break;
+
+  case 0xA000:
+    // ANNN - set I to NNN
+    chip8.I = nnn;
+    std::cout << "LD I, 0x" << std::hex << nnn << '\n';
+    break;
+
+  case 0xD000: {
+    // DXYN - draw sprites at (VX, VY) with height N
+    const uint8_t x_pos{static_cast<uint8_t>(chip8.V[x] & 63u)};
+    const uint8_t y_pos{static_cast<uint8_t>(chip8.V[y] & 31u)};
+    chip8.V[0xF] = 0;
+
+    for (uint8_t row{0}; row < n; ++row) {
+      const uint8_t sprite_byte{chip8.memory[chip8.I + row]};
+
+      // stop if we reach bottom edge
+      if (y_pos + row >= 32)
+        break;
+
+      for (uint8_t col{0}; col < 8; ++col) {
+
+        if (x_pos + col >= 64)
+          break;
+
+        const uint8_t sprite_pixel{
+            static_cast<uint8_t>(sprite_byte & (0x80u >> col))};
+
+        if (sprite_pixel != 0) {
+          const uint16_t pixel_index{
+              static_cast<uint16_t>((y_pos + row) * 64 + (x_pos + col))};
+
+          // if both sprite pixel and screen pixel are on
+          // collision detected
+          if (chip8.display[pixel_index] == 1)
+            chip8.V[0xF] = 1;
+
+          // XOR the pixel
+          chip8.display[pixel_index] ^= 1;
+        }
+      }
+    }
+
+    std::cout << "DRW V" << std::hex << static_cast<int>(x) << ", V"
+              << static_cast<int>(y) << ", " << static_cast<int>(n) << '\n';
+
+    break;
+  }
 
   default:
     std::cerr << "Unknown opcode: 0x" << std::hex << opcode << '\n';
     break;
+  }
+}
+
+void printDisplay(const Chip8 &chip8) {
+  for (uint16_t y{0}; y < 32; ++y) {
+    for (uint16_t x{0}; x < 64; ++x) {
+      std::cout << (chip8.display[y * 64 + x] ? "█" : " ");
+    }
+    std::cout << '\n';
   }
 }
 
@@ -120,6 +223,11 @@ int main() {
   std::cout << "First opcode: " << std::hex << std::uppercase
             << static_cast<int>(chip8.memory[0x200])
             << static_cast<int>(chip8.memory[0x200 + 1]) << '\n';
+
+  for (int i{0}; i < 30; ++i)
+    emulateCycle(chip8);
+
+  printDisplay(chip8);
 
   return 0;
 }
