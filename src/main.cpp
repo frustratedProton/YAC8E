@@ -136,6 +136,24 @@ void emulateCycle(Chip8 &chip8) {
     std::cout << "CALL 0x" << std::hex << nnn << '\n';
     break;
 
+  case 0x3000:
+    // 3XNN - skip if VX = NN
+    if (chip8.V[x] == nn)
+      chip8.PC += 2;
+    break;
+
+  case 0x4000:
+    // 4XNN - skip if VX != NN
+    if (chip8.V[x] != nn)
+      chip8.PC += 2;
+    break;
+
+  case 0x5000:
+    // 5XYO - skip if VX == VY
+    if (chip8.V[x] == chip8.V[y])
+      chip8.PC += 2;
+    break;
+
   case 0x6000:
     // 6XNN - set VX to NN
     chip8.V[x] = nn;
@@ -148,6 +166,12 @@ void emulateCycle(Chip8 &chip8) {
     chip8.V[x] += nn;
     std::cout << "ADD V" << std::hex << static_cast<int>(x) << ", 0x"
               << static_cast<int>(nn) << '\n';
+    break;
+
+  case 0x9000:
+    // 9XYO - skip if VX != VY
+    if (chip8.V[x] != chip8.V[y])
+      chip8.PC += 2;
     break;
 
   case 0xA000:
@@ -219,11 +243,11 @@ int main() {
 
   init(chip8);
 
-//   if (!loadRom(chip8, "roms/IBM Logo.ch8"))
-//     return 1;
-
-  if (!loadRom(chip8, "roms/bc_test.ch8"))
+  if (!loadRom(chip8, "roms/IBM Logo.ch8"))
     return 1;
+
+  //   if (!loadRom(chip8, "roms/bc_test.ch8"))
+  //     return 1;
 
   constexpr int scale{15};
   InitWindow(64 * scale, 32 * scale, "CHIP-8");
