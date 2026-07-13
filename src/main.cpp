@@ -168,6 +168,92 @@ void emulateCycle(Chip8 &chip8) {
               << static_cast<int>(nn) << '\n';
     break;
 
+  case 0x8000:
+    // another switch case since we are now
+    // decode based on later nibbles
+    switch (opcode & 0x000Fu) {
+    case 0x0:
+      // 8XY0 - set VX to VY
+      chip8.V[x] = chip8.V[y];
+      break;
+
+    case 0x1:
+      // 8XY1 - VX OR VY (VX |= VY)
+      chip8.V[x] |= chip8.V[y];
+      break;
+
+    case 0x2:
+      // 8XY2 - VX AND VY (VX &= VY)
+      chip8.V[x] &= chip8.V[y];
+      break;
+
+    case 0x3:
+      // 8XY3 - VX XOR VY
+      chip8.V[x] ^= chip8.V[y];
+      break;
+
+    case 0x4: {
+      // 8XY4 - ADD
+      // unlike 7XNN this will affect the
+      // carry flag (VF Register).
+      const uint16_t sum{static_cast<uint16_t>(chip8.V[x] + chip8.V[y])};
+      // if the result is larget than 255, and overflows the
+      // 8bit VX, flag register is set to 1
+      chip8.V[0xF] = (sum > 255u) ? 1 : 0;
+      chip8.V[x] = static_cast<uint8_t>(sum & 0xFFu);
+      break;
+    }
+
+    case 0x5: {
+      // 8XY5 - VX - VY
+      // VF is NOT borrow
+      const uint8_t vx{chip8.V[x]};
+      const uint8_t vy{chip8.V[y]};
+      chip8.V[0xF] = (vx >= vy) ? 1 : 0;
+      chip8.V[x] = vx - vy;
+      break;
+    }
+
+    case 0x7: {
+      // 8XY5 - VX = VY - VX
+      // We doing a 0x7 here because both this and
+      // 0x5 are subtraction instructions.
+      // VF is NOT borrow
+      const uint8_t vx{chip8.V[x]};
+      const uint8_t vy{chip8.V[y]};
+      chip8.V[0xF] = (vy >= vx) ? 1 : 0;
+      chip8.V[x] = vy - vx;
+      break;
+    }
+
+    case 0x6: {
+      // 8XY6 - VX >> = 1
+      // VF = shifted out bit
+      // in modern behaviour, we ignore VY
+      const uint8_t shifted{static_cast<uint8_t>(chip8.V[x] & 0x1u)};
+      // oouuugh this might be first time ligratures
+      // are making code less readable to me
+      chip8.V[x] >>= 1;
+      chip8.V[0xF] = shifted;
+      break;
+    }
+
+    case 0x8: {
+      // 8XY6 - VX << = 1
+      // VF = shifted out bit
+      // in modern behaviour, we ignore VY
+      const uint8_t shifted{static_cast<uint8_t>(chip8.V[x] & 0x1u)};
+      chip8.V[x] <<= 1;
+      chip8.V[0xF] = shifted;
+      break;
+    }
+
+    default:
+      std::cerr << "Unknown opcode: 0x" << std::hex << opcode << '\n';
+      break;
+    }
+
+    break;
   case 0x9000:
     // 9XYO - skip if VX != VY
     if (chip8.V[x] != chip8.V[y])
