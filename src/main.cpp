@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <raylib.h>
 
 #include <algorithm>
@@ -238,8 +239,8 @@ void emulateCycle(Chip8 &chip8) {
       break;
     }
 
-    case 0x8: {
-      // 8XY6 - VX << = 1
+    case 0xE: {
+      // 8XYE - VX << = 1
       // VF = shifted out bit
       // in modern behaviour, we ignore VY
       const uint8_t shifted{static_cast<uint8_t>(chip8.V[x] & 0x1u)};
@@ -265,6 +266,22 @@ void emulateCycle(Chip8 &chip8) {
     chip8.I = nnn;
     std::cout << "LD I, 0x" << std::hex << nnn << '\n';
     break;
+
+  case 0xB000:
+    // BNNN - jump to differnt subroutines
+    // this is another ambiguous instruction
+    // so i decided with original behaviour
+    chip8.PC = nnn + chip8.V[0];
+    break;
+
+  case 0xC000: {
+    // CXNN - VX = random & nn
+    // generates a random number, binary ANDs with
+    // NN and puts its result in VX
+    const uint8_t random{static_cast<uint8_t>(rand() % 256)};
+    chip8.V[x] = random & nn;
+    break;
+  }
 
   case 0xD000: {
     // DXYN - draw sprites at (VX, VY) with height N
@@ -308,6 +325,100 @@ void emulateCycle(Chip8 &chip8) {
     break;
   }
 
+  case 0xE000:
+    switch (opcode & 0x00FFu) {
+    case 0x9E:
+      if (chip8.key[chip8.V[x]])
+        chip8.PC += 2;
+      break;
+
+    case 0xA1:
+      if (!chip8.key[chip8.V[x]])
+        chip8.PC += 2;
+      break;
+
+    default:
+      std::cerr << "Unknown opcode: 0x" << std::hex << opcode << '\n';
+      break;
+    }
+    break;
+
+  case 0xF000:
+    switch (opcode & 0x00FFu) {
+    case 0x07:
+      // FX07 - sets VX to delay timer
+      chip8.V[x] = chip8.delay_timer;
+      break;
+
+    case 0x15:
+      // FX15 - set delay timer to VX
+      chip8.delay_timer = chip8.V[x];
+      break;
+
+    case 0x18:
+      // FX18 - set sound timer to VX
+      chip8.sound_timer = chip8.V[x];
+      break;
+
+    case 0x1E:
+      // FX1E - add VX to I
+      // set VF if I overflows past 0xFFF
+      // (above is mostly applies to Amiga)
+      chip8.I += chip8.V[x];
+      chip8.V[0xF] = (chip8.I > 0xFFF) ? 1 : 0;
+      break;
+
+    case 0x0A: {
+      // FX0A - block until a key is pressed
+      // decrement PC so this instruction keep
+      //  repeating until a key is pressed
+      bool key_pressed{false};
+      for (uint8_t i{0}; i < 16; ++i) {
+        if (chip8.key[i]) {
+          chip8.V[x] = i;
+          key_pressed = true;
+          break;
+        }
+      }
+
+      if (!key_pressed)
+        chip8.PC -= 2;
+      break;
+    }
+
+    case 0x29:
+      // FX29 - set I to font character in VX
+      // each fond character is 5 bytes, stored starting in 0x000
+      chip8.I = (chip8.V[x] & 0x0Fu) * 5;
+      break;
+
+    case 0x33: {
+      // FX33 - BCD conversion (decimal to binary)
+      // store hundreds, tens, ones digits of
+      // VX in memory at I, I + 1, I + 2
+      const uint8_t vx{chip8.V[x]};
+      chip8.memory[chip8.I] = vx / 100;
+      chip8.memory[chip8.I + 1] = (vx / 10) % 10;
+      chip8.memory[chip8.I + 2] = vx % 10;
+      break;
+    }
+
+    case 0x55:
+      // FX55 - store V0 to in memory starting at I
+      // I is not modified in modern behaviour
+      for (uint8_t i{0}; i <= x; ++i)
+        chip8.memory[chip8.I + i] = chip8.V[i];
+      break;
+
+    case 0x65:
+      // FX65 - load V0 to VX from memory starting at I
+      // again, I is not modified in modern behaviour
+      for (uint8_t i{0}; i <= x; ++i)
+        chip8.V[i] = chip8.memory[chip8.I + i];
+    }
+
+    break;
+
   default:
     std::cerr << "Unknown opcode: 0x" << std::hex << opcode << '\n';
     break;
@@ -329,10 +440,16 @@ int main() {
 
   init(chip8);
 
-  if (!loadRom(chip8, "roms/IBM Logo.ch8"))
-    return 1;
+  //   if (!loadRom(chip8, "roms/IBM Logo.ch8"))
+  //     return 1;
 
   //   if (!loadRom(chip8, "roms/bc_test.ch8"))
+  //     return 1;
+
+  if (!loadRom(chip8, "roms/Kaleidoscope_[Joseph_Weisbecker,1978].ch8"))
+    return 1;
+
+  //   if (!loadRom(chip8, "roms/test_opcode.ch8"))
   //     return 1;
 
   constexpr int scale{15};
