@@ -10,6 +10,13 @@
 #include <iostream>
 #include <vector>
 
+// add debug flag
+#ifdef DEBUG
+#define LOG(x) std::cout << x
+#else
+#define LOG(x)
+#endif
+
 // emulating the chip8 architecture
 struct Chip8 {
   std::array<uint8_t, 4096> memory{}; // 4KB RAM
@@ -112,19 +119,19 @@ void emulateCycle(Chip8 &chip8) {
       // 00E0 - clear screen
       // turn pixel off
       chip8.display.fill(0);
-      std::cout << "CLS\n";
+      LOG("CLS\n");
     } else if (opcode == 0x00EE) {
       // 00EE - return from subroutine
       chip8.SP--;
       chip8.PC = chip8.stack[chip8.SP];
-      std::cout << "RET\n";
+      LOG("RET\n");
     }
     break;
 
   case 0x1000:
     // 1NNN - JUMP to address NNN
     chip8.PC = nnn;
-    std::cout << "JP 0x" << std::hex << nnn << '\n';
+    LOG("JP 0x" << std::hex << nnn << '\n');
     break;
 
   case 0x2000:
@@ -134,7 +141,7 @@ void emulateCycle(Chip8 &chip8) {
     chip8.SP++;
     // set pc to nnn
     chip8.PC = nnn;
-    std::cout << "CALL 0x" << std::hex << nnn << '\n';
+    LOG("CALL 0x" << std::hex << nnn << '\n');
     break;
 
   case 0x3000:
@@ -158,15 +165,15 @@ void emulateCycle(Chip8 &chip8) {
   case 0x6000:
     // 6XNN - set VX to NN
     chip8.V[x] = nn;
-    std::cout << "LD V" << std::hex << static_cast<int>(x) << ", 0x"
-              << static_cast<int>(nn) << '\n';
+    LOG("LD V" << std::hex << static_cast<int>(x) << ", 0x"
+               << static_cast<int>(nn) << '\n');
     break;
 
   case 0x7000:
     // 7XNN - add NN to VX
     chip8.V[x] += nn;
-    std::cout << "ADD V" << std::hex << static_cast<int>(x) << ", 0x"
-              << static_cast<int>(nn) << '\n';
+    LOG("ADD V" << std::hex << static_cast<int>(x) << ", 0x"
+                << static_cast<int>(nn) << '\n');
     break;
 
   case 0x8000:
@@ -243,7 +250,8 @@ void emulateCycle(Chip8 &chip8) {
       // 8XYE - VX << = 1
       // VF = shifted out bit
       // in modern behaviour, we ignore VY
-      const uint8_t shifted{static_cast<uint8_t>(chip8.V[x] & 0x1u)};
+      const uint8_t shifted{static_cast<uint8_t>(
+          (chip8.V[x] & 0x80u) >> 7)};
       chip8.V[x] <<= 1;
       chip8.V[0xF] = shifted;
       break;
@@ -264,7 +272,7 @@ void emulateCycle(Chip8 &chip8) {
   case 0xA000:
     // ANNN - set I to NNN
     chip8.I = nnn;
-    std::cout << "LD I, 0x" << std::hex << nnn << '\n';
+    LOG("LD I, 0x" << std::hex << nnn << '\n');
     break;
 
   case 0xB000:
@@ -319,8 +327,8 @@ void emulateCycle(Chip8 &chip8) {
       }
     }
 
-    std::cout << "DRW V" << std::hex << static_cast<int>(x) << ", V"
-              << static_cast<int>(y) << ", " << static_cast<int>(n) << '\n';
+    LOG("DRW V" << std::hex << static_cast<int>(x) << ", V"
+                << static_cast<int>(y) << ", " << static_cast<int>(n) << '\n');
 
     break;
   }
@@ -415,6 +423,7 @@ void emulateCycle(Chip8 &chip8) {
       // again, I is not modified in modern behaviour
       for (uint8_t i{0}; i <= x; ++i)
         chip8.V[i] = chip8.memory[chip8.I + i];
+      break;
     }
 
     break;
@@ -423,6 +432,29 @@ void emulateCycle(Chip8 &chip8) {
     std::cerr << "Unknown opcode: 0x" << std::hex << opcode << '\n';
     break;
   }
+}
+
+void handleInput(Chip8 &chip8) {
+  if (!IsKeyPressed(KEY_ESCAPE))
+    CloseWindow();
+
+  // map hex keys to qwerty
+  chip8.key[0x0] = IsKeyDown(KEY_X);
+  chip8.key[0x1] = IsKeyDown(KEY_ONE);
+  chip8.key[0x2] = IsKeyDown(KEY_TWO);
+  chip8.key[0x3] = IsKeyDown(KEY_THREE);
+  chip8.key[0x4] = IsKeyDown(KEY_Q);
+  chip8.key[0x5] = IsKeyDown(KEY_W);
+  chip8.key[0x6] = IsKeyDown(KEY_E);
+  chip8.key[0x7] = IsKeyDown(KEY_A);
+  chip8.key[0x8] = IsKeyDown(KEY_S);
+  chip8.key[0x9] = IsKeyDown(KEY_D);
+  chip8.key[0xA] = IsKeyDown(KEY_Z);
+  chip8.key[0xB] = IsKeyDown(KEY_C);
+  chip8.key[0xC] = IsKeyDown(KEY_FOUR);
+  chip8.key[0xD] = IsKeyDown(KEY_R);
+  chip8.key[0xE] = IsKeyDown(KEY_F);
+  chip8.key[0xF] = IsKeyDown(KEY_V);
 }
 
 void printDisplay(const Chip8 &chip8) {
@@ -440,14 +472,14 @@ int main() {
 
   init(chip8);
 
-  //   if (!loadRom(chip8, "roms/IBM Logo.ch8"))
-  //     return 1;
+    if (!loadRom(chip8, "roms/IBM Logo.ch8"))
+      return 1;
 
   //   if (!loadRom(chip8, "roms/bc_test.ch8"))
   //     return 1;
 
-  if (!loadRom(chip8, "roms/Kaleidoscope_[Joseph_Weisbecker,1978].ch8"))
-    return 1;
+//   if (!loadRom(chip8, "roms/Pong (1 player).ch8"))
+//     return 1;
 
   //   if (!loadRom(chip8, "roms/test_opcode.ch8"))
   //     return 1;
@@ -456,8 +488,18 @@ int main() {
   InitWindow(64 * scale, 32 * scale, "CHIP-8");
   SetTargetFPS(60);
 
+  constexpr int CYCLES_PER_FRAME{10};
+
   while (!WindowShouldClose()) {
-    emulateCycle(chip8);
+    handleInput(chip8);
+
+    for (int i{0}; i < CYCLES_PER_FRAME; ++i)
+      emulateCycle(chip8);
+
+    if (chip8.delay_timer > 0)
+      chip8.delay_timer--;
+    if (chip8.sound_timer > 0)
+      chip8.sound_timer--;
 
     BeginDrawing();
     ClearBackground(BLACK);

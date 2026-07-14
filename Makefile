@@ -18,4 +18,7 @@ clean:
 run: $(TARGET)
 	./$(TARGET)
 
+debug: 
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -DDEBUG $(SRC) $(LIBS) -o $(TARGET)
+
 .PHONY: all clean run
