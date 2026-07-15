@@ -3,9 +3,9 @@ CXXFLAGS = -std=c++20 -Wall -Wextra
 INCLUDES = -I$(HOME)/code/raylib/src
 LIBS = $(HOME)/code/raylib/build/raylib/libraylib.a -lGL -lm -lpthread -ldl -lrt -lX11
 
-SRC = src/main.cpp
+SRC = src/main.cpp src/chip8.cpp
 TARGET = build/main
-ROM ?= roms/IBM\ Logo.ch8
+ROM ?= roms/IBM Logo.ch8
 
 all: $(TARGET)
 
