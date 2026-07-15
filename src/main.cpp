@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdlib>
 #include <raylib.h>
 
@@ -250,8 +251,7 @@ void emulateCycle(Chip8 &chip8) {
       // 8XYE - VX << = 1
       // VF = shifted out bit
       // in modern behaviour, we ignore VY
-      const uint8_t shifted{static_cast<uint8_t>(
-          (chip8.V[x] & 0x80u) >> 7)};
+      const uint8_t shifted{static_cast<uint8_t>((chip8.V[x] & 0x80u) >> 7)};
       chip8.V[x] <<= 1;
       chip8.V[0xF] = shifted;
       break;
@@ -435,7 +435,7 @@ void emulateCycle(Chip8 &chip8) {
 }
 
 void handleInput(Chip8 &chip8) {
-  if (!IsKeyPressed(KEY_ESCAPE))
+  if (IsKeyPressed(KEY_ESCAPE))
     CloseWindow();
 
   // map hex keys to qwerty
@@ -466,27 +466,38 @@ void printDisplay(const Chip8 &chip8) {
   }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+  if (argc < 2) {
+    std::cerr << "Usage: ./main <rom path>\n";
+    return 1;
+  }
 
   Chip8 chip8;
-
   init(chip8);
 
-    if (!loadRom(chip8, "roms/IBM Logo.ch8"))
-      return 1;
-
-  //   if (!loadRom(chip8, "roms/bc_test.ch8"))
-  //     return 1;
-
-//   if (!loadRom(chip8, "roms/Pong (1 player).ch8"))
-//     return 1;
-
-  //   if (!loadRom(chip8, "roms/test_opcode.ch8"))
-  //     return 1;
+  if (!loadRom(chip8, argv[1]))
+    return 1;
 
   constexpr int scale{15};
   InitWindow(64 * scale, 32 * scale, "CHIP-8");
   SetTargetFPS(60);
+  InitAudioDevice();
+
+  constexpr int SAMPLE_RATE{44100};
+  Wave wave{};
+  wave.frameCount = SAMPLE_RATE;
+  wave.sampleRate = SAMPLE_RATE;
+  wave.sampleSize = 16;
+  wave.channels = 1;
+
+  auto *data{static_cast<int16_t *>(malloc(wave.frameCount * sizeof(int16_t)))};
+  for (unsigned int i{0}; i < wave.frameCount; ++i)
+    data[i] =
+        static_cast<int16_t>(32000 * sin(2.0f * PI * 440.0f * i / SAMPLE_RATE));
+  wave.data = data;
+
+  Sound beep{LoadSoundFromWave(wave)};
+  UnloadWave(wave);
 
   constexpr int CYCLES_PER_FRAME{10};
 
@@ -498,23 +509,26 @@ int main() {
 
     if (chip8.delay_timer > 0)
       chip8.delay_timer--;
-    if (chip8.sound_timer > 0)
+    if (chip8.sound_timer > 0) {
       chip8.sound_timer--;
+      PlaySound(beep);
+    } else {
+      StopSound(beep);
+    }
 
     BeginDrawing();
     ClearBackground(BLACK);
 
-    for (int y{0}; y < 32; ++y) {
-      for (int x{0}; x < 64; ++x) {
-        if (chip8.display[y * 64 + x]) {
+    for (int y{0}; y < 32; ++y)
+      for (int x{0}; x < 64; ++x)
+        if (chip8.display[y * 64 + x])
           DrawRectangle(x * scale, y * scale, scale, scale, WHITE);
-        }
-      }
-    }
 
     EndDrawing();
   }
 
+  UnloadSound(beep);
+  CloseAudioDevice();
   CloseWindow();
   return 0;
 }

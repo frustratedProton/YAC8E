@@ -5,6 +5,7 @@ LIBS = $(HOME)/code/raylib/build/raylib/libraylib.a -lGL -lm -lpthread -ldl -lrt
 
 SRC = src/main.cpp
 TARGET = build/main
+ROM ?= roms/IBM\ Logo.ch8
 
 all: $(TARGET)
 
@@ -16,7 +17,7 @@ clean:
 	rm -rf build/*
 
 run: $(TARGET)
-	./$(TARGET)
+	./$(TARGET) "$(ROM)"
 
 debug: 
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -DDEBUG $(SRC) $(LIBS) -o $(TARGET)
