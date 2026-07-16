@@ -1,6 +1,7 @@
 #include "chip8.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
@@ -99,16 +100,58 @@ void emulateCycle(Chip8 &chip8) {
 
   switch (opcode & 0xF000) {
   case 0x0000:
-    if (opcode == 0x00E0) {
+    switch (opcode) {
+    case 0x00E0:
       // 00E0 - clear screen
       // turn pixel off
       chip8.display.fill(0);
       LOG("CLS\n");
-    } else if (opcode == 0x00EE) {
+      break;
+
+    case 0x00EE:
       // 00EE - return from subroutine
       chip8.SP--;
       chip8.PC = chip8.stack[chip8.SP];
       LOG("RET\n");
+      break;
+
+    case 0x00FD:
+      // 00FD - exit
+      LOG("EXIT\n");
+      break;
+
+    case 0x00FE:
+      // 00FE - disable hi-res
+      chip8.hires = false;
+      chip8.display.fill(0);
+      LOG("LORES\n");
+      break;
+
+    case 0x00FF:
+      // 00FF - enable hi-res
+      chip8.hires = true;
+      chip8.display.fill(0);
+      LOG("HIRES\n");
+      break;
+
+    default:
+      // 00CN - scoll down N pixels (TODO)
+      if ((opcode & 0x00F0) == 0x00C0) {
+        const uint8_t scroll_n{static_cast<uint8_t>(opcode & 0x000F)};
+        // TODO: implement scroll
+        LOG("SCROLL DOWN " << static_cast<int>(scroll_n) << '\n');
+      } else if (opcode == 0x00FB) {
+        // 00FB - scroll right
+        // TODO: implement scroll
+        LOG("SCROLL RIGHT\n");
+      } else if (opcode == 0x00FC) {
+        // 00FC - scroll left
+        // TODO: implement scroll
+        LOG("SCROLL LEFT\n");
+      } else {
+        std::cerr << "Unknown 0x0000 opcode: 0x" << std::hex << opcode << '\n';
+      }
+      break;
     }
     break;
 
