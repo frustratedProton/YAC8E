@@ -42,8 +42,8 @@ int main(int argc, char *argv[]) {
   if (!loadRom(chip8, argv[1]))
     return 1;
 
-  constexpr int scale{20}; 
-  InitWindow(64 * scale, 32 * scale, "CHIP-8");
+  constexpr int scale{10};
+  InitWindow(128 * scale, 64 * scale, "CHIP-8");
   SetTargetFPS(60);
 
   constexpr int CYCLES_PER_FRAME{10};
@@ -54,18 +54,26 @@ int main(int argc, char *argv[]) {
     for (int i{0}; i < CYCLES_PER_FRAME; ++i)
       emulateCycle(chip8);
 
+    if (chip8.hires && GetScreenWidth() != 128 * scale)
+      SetWindowSize(128 * scale, 64 * scale);
+    else if (!chip8.hires && GetScreenWidth() != 64 * scale)
+      SetWindowSize(64 * scale, 32 * scale);
+
     if (chip8.delay_timer > 0)
       chip8.delay_timer--;
     if (chip8.sound_timer > 0)
-      chip8.sound_timer--; 
+      chip8.sound_timer--;
+
+    const int display_width{chip8.hires ? 128 : 64};
+    const int display_height{chip8.hires ? 64 : 32};
 
     BeginDrawing();
-    ClearBackground(BLACK);
+    ClearBackground(ORANGE);
 
-    for (int y{0}; y < 32; ++y)
-      for (int x{0}; x < 64; ++x)
-        if (chip8.display[y * 64 + x])
-          DrawRectangle(x * scale, y * scale, scale, scale, WHITE);
+    for (int y{0}; y < display_height; ++y)
+      for (int x{0}; x < display_width; ++x)
+        if (chip8.display[y * display_width + x])
+          DrawRectangle(x * scale, y * scale, scale, scale, BLACK);
 
     EndDrawing();
   }

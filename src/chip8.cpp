@@ -73,6 +73,57 @@ bool loadRom(Chip8 &chip8, const std::string &filename) {
   return true;
 }
 
+void scrollDown(Chip8 &chip8, uint8_t pixels) {
+  const int width{chip8.hires ? 128 : 64};
+  const int height{chip8.hires ? 64 : 32};
+
+  // move row down by 'pixel' rows
+  for (int y{height - 1}; y >= pixels; --y) {
+    for (int x{0}; x < width; ++x) {
+      chip8.display[y * width + x] = chip8.display[(y - pixels) * width + x];
+    }
+  }
+
+  // clear top 'pixels' rows
+  for (int y{0}; y < pixels; ++y) {
+    for (int x{0}; x < width; ++x) {
+      chip8.display[y * width + x] = 0;
+    }
+  }
+}
+
+void scrollRight(Chip8 &chip8) {
+  const int width{chip8.hires ? 128 : 64};
+  const int height{chip8.hires ? 64 : 32};
+
+  // move columns right by 4 pixels
+  for (int y{0}; y < height; ++y) {
+    for (int x{width - 1}; x >= 4; --x) {
+      chip8.display[y * width + x] = chip8.display[y * width + (x - 4)];
+    }
+    // clear leftmost 4 pixels
+    for (int x{0}; x < 4; ++x) {
+      chip8.display[y * width + x] = 0;
+    }
+  }
+}
+
+void scrollLeft(Chip8 &chip8) {
+  const int width{chip8.hires ? 128 : 64};
+  const int height{chip8.hires ? 64 : 32};
+
+  // move columns left by 4 pixels
+  for (int y{0}; y < height; ++y) {
+    for (int x{0}; x < width - 4; ++x) {
+      chip8.display[y * width + x] = chip8.display[y * width + (x + 4)];
+    }
+    // clear rightmost 4 pixels
+    for (int x{width - 4}; x < width; ++x) {
+      chip8.display[y * width + x] = 0;
+    }
+  }
+}
+
 // fetch/decode/execute loop
 void emulateCycle(Chip8 &chip8) {
   // fetch operation
@@ -138,15 +189,15 @@ void emulateCycle(Chip8 &chip8) {
       // 00CN - scoll down N pixels (TODO)
       if ((opcode & 0x00F0) == 0x00C0) {
         const uint8_t scroll_n{static_cast<uint8_t>(opcode & 0x000F)};
-        // TODO: implement scroll
+        scrollDown(chip8, scroll_n);
         LOG("SCROLL DOWN " << static_cast<int>(scroll_n) << '\n');
       } else if (opcode == 0x00FB) {
         // 00FB - scroll right
-        // TODO: implement scroll
+        scrollRight(chip8);
         LOG("SCROLL RIGHT\n");
       } else if (opcode == 0x00FC) {
         // 00FC - scroll left
-        // TODO: implement scroll
+        scrollLeft(chip8);
         LOG("SCROLL LEFT\n");
       } else {
         std::cerr << "Unknown 0x0000 opcode: 0x" << std::hex << opcode << '\n';
@@ -305,7 +356,7 @@ void emulateCycle(Chip8 &chip8) {
     // BNNN - jump to differnt subroutines
     // this is another ambiguous instruction
     // so i decided with original behaviour
-    chip8.PC = nnn + chip8.V[0];
+    chip8.PC = nnn + chip8.V[x];
     break;
 
   case 0xC000: {
@@ -319,36 +370,74 @@ void emulateCycle(Chip8 &chip8) {
 
   case 0xD000: {
     // DXYN - draw sprites at (VX, VY) with height N
-    const uint8_t x_pos{static_cast<uint8_t>(chip8.V[x] & 63u)};
-    const uint8_t y_pos{static_cast<uint8_t>(chip8.V[y] & 31u)};
+    const int width{chip8.hires ? 128 : 64};
+    const int height{chip8.hires ? 64 : 32};
+
+    const uint8_t x_pos{static_cast<uint8_t>(chip8.V[x] % width)};
+    const uint8_t y_pos{static_cast<uint8_t>(chip8.V[y] % height)};
+
     chip8.V[0xF] = 0;
 
-    for (uint8_t row{0}; row < n; ++row) {
-      const uint8_t sprite_byte{chip8.memory[chip8.I + row]};
+    if (n == 0 && chip8.hires) {
+      // 16x16 sprite
+      for (uint8_t row{0}; row < 16; ++row) {
+        const uint8_t byte1{chip8.memory[chip8.I + row * 2]};
+        const uint8_t byte2{chip8.memory[chip8.I + row * 2 + 1]};
 
-      // stop if we reach bottom edge
-      if (y_pos + row >= 32)
-        break;
+        for (uint8_t col{0}; col < 8; ++col) {
+          if (byte1 & (0x80u >> col)) {
+            const uint8_t screen_x{static_cast<uint8_t>((x_pos + col) % width)};
+            const uint8_t screen_y{
+                static_cast<uint8_t>((y_pos + row) % height)};
+            const uint16_t pixel_index{
+                static_cast<uint16_t>(screen_y * width + screen_x)};
 
-      for (uint8_t col{0}; col < 8; ++col) {
+            if (chip8.display[pixel_index])
+              chip8.V[0xF] = 1;
+            chip8.display[pixel_index] ^= 1;
+          }
 
-        if (x_pos + col >= 64)
+          if (byte2 & (0x80u >> col)) {
+            const uint8_t screen_x{
+                static_cast<uint8_t>((x_pos + col + 8) % width)};
+            const uint8_t screen_y{
+                static_cast<uint8_t>((y_pos + row) % height)};
+            const uint16_t pixel_index{
+                static_cast<uint16_t>(screen_y * width + screen_x)};
+
+            if (chip8.display[pixel_index] == 1)
+              chip8.V[0xF] = 1;
+            chip8.display[pixel_index] ^= 1;
+          }
+        }
+      }
+
+    } else {
+      // normal 8xN sprite (or 8x16 if N=0 in low-res SCHIP mode)
+      const uint8_t sprite_height{static_cast<uint8_t>(n == 0 ? 16u : n)};
+
+      for (uint8_t row{0}; row < sprite_height; ++row) {
+        const uint8_t sprite_byte{chip8.memory[chip8.I + row]};
+
+        if (y_pos + row >= height)
           break;
 
-        const uint8_t sprite_pixel{
-            static_cast<uint8_t>(sprite_byte & (0x80u >> col))};
+        for (uint8_t col{0}; col < 8; ++col) {
+          if (x_pos + col >= width)
+            break;
 
-        if (sprite_pixel != 0) {
-          const uint16_t pixel_index{
-              static_cast<uint16_t>((y_pos + row) * 64 + (x_pos + col))};
+          if (sprite_byte & (0x80u >> col)) {
+            // wrap coordinates instead of clipping
+            const uint16_t pixel_index{
+                static_cast<uint16_t>((y_pos + row) * width + (x_pos + col))};
 
-          // if both sprite pixel and screen pixel are on
-          // collision detected
-          if (chip8.display[pixel_index] == 1)
-            chip8.V[0xF] = 1;
+            // if both sprite pixel and screen pixel are on, collision detected
+            if (chip8.display[pixel_index])
+              chip8.V[0xF] = 1;
 
-          // XOR the pixel
-          chip8.display[pixel_index] ^= 1;
+            // XOR the pixel
+            chip8.display[pixel_index] ^= 1;
+          }
         }
       }
     }
