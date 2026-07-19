@@ -495,18 +495,25 @@ void emulateCycle(Chip8 &chip8) {
       // FX0A - block until a key is pressed
       // decrement PC so this instruction keep
       //  repeating until a key is pressed
-      bool key_pressed{false};
-      for (uint8_t i{0}; i < 16; ++i) {
-        if (chip8.key[i]) {
-          chip8.V[x] = i;
-          key_pressed = true;
-          break;
+      static uint8_t key_held{0xFF};
+
+      if (key_held == 0xFF) {
+        for (uint8_t i{0}; i < 16; ++i) {
+          if (chip8.key[i]) {
+            key_held = i;
+            break;
+          }
+        }
+
+        chip8.PC -= 2;
+      } else {
+        if (!chip8.key[key_held]) {
+          chip8.V[x] = key_held;
+          key_held = 0xFF;
+        } else {
+          chip8.PC -= 2;
         }
       }
-
-      if (!key_pressed)
-        chip8.PC -= 2;
-      break;
     }
 
     case 0x29:
