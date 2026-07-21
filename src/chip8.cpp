@@ -39,6 +39,13 @@ void init(Chip8 &chip8) {
   chip8.PC = 0x200; // init program counter to correct memory block
   srand(static_cast<unsigned>(time(nullptr)));
   std::copy(FONT_SET.begin(), FONT_SET.end(), chip8.memory.begin() + 0x000);
+
+  // default square wave
+  chip8.audio_pattern = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+  // default pitch = 64 = 4000Hz
+  chip8.pitch = 64;
 }
 
 bool loadRom(Chip8 &chip8, const std::string &filename) {

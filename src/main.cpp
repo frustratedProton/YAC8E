@@ -46,13 +46,36 @@ int main(int argc, char *argv[]) {
   constexpr int scale{10};
   InitWindow(128 * scale, 64 * scale, "CHIP-8");
   SetTargetFPS(60);
+  InitAudioDevice();
 
-  // XO-CHIP 4 color palette
-  // color is determined by which planes are active at a pixel
-  constexpr Color COLOR_BG{0x99, 0x66, 0x00, 0xFF}; // no planes active
-  constexpr Color COLOR_1{0xFF, 0xFF, 0xFF, 0xFF};  // plane 1 only
-  constexpr Color COLOR_2{0x00, 0x00, 0x00, 0xFF};  // plane 2 only
-  constexpr Color COLOR_3{0xFF, 0x00, 0x00, 0xFF};  // both planes active
+  constexpr int SAMPLE_RATE{44100};
+  constexpr int BUFFER_SIZE{4096};
+
+  AudioStream audio_stream{LoadAudioStream(SAMPLE_RATE, 16, 1)};
+  PlayAudioStream(audio_stream);
+
+  std::array<int16_t, BUFFER_SIZE> audio_buffer{};
+
+  // generates audio buffer from XO-CHIP pattern and pitch
+  auto generateAudio = [&](int16_t *buffer, int size) {
+    const double freq{4000.0 * pow(2.0, (chip8.pitch - 64) / 48.0)};
+    const double samples_per_pattern{SAMPLE_RATE / freq};
+
+    for (int i{0}; i < size; ++i) {
+      const int pattern_pos{
+          static_cast<int>(i / (samples_per_pattern / 128.0)) % 128};
+      const int byte_idx{pattern_pos / 8};
+      const int bit_idx{7 - (pattern_pos % 8)};
+      const bool bit{
+          static_cast<bool>((chip8.audio_pattern[byte_idx] >> bit_idx) & 1)};
+      buffer[i] = bit ? 16000 : -16000;
+    }
+  };
+
+  constexpr Color COLOR_BG{0x99, 0x66, 0x00, 0xFF};
+  constexpr Color COLOR_1{0xFF, 0xFF, 0xFF, 0xFF};
+  constexpr Color COLOR_2{0x00, 0x00, 0x00, 0xFF};
+  constexpr Color COLOR_3{0xFF, 0x00, 0x00, 0xFF};
 
   constexpr int CYCLES_PER_FRAME{10};
 
@@ -69,8 +92,19 @@ int main(int argc, char *argv[]) {
 
     if (chip8.delay_timer > 0)
       chip8.delay_timer--;
-    if (chip8.sound_timer > 0)
+
+    if (chip8.sound_timer > 0) {
       chip8.sound_timer--;
+      if (IsAudioStreamProcessed(audio_stream)) {
+        generateAudio(audio_buffer.data(), BUFFER_SIZE);
+        UpdateAudioStream(audio_stream, audio_buffer.data(), BUFFER_SIZE);
+      }
+    } else {
+      if (IsAudioStreamProcessed(audio_stream)) {
+        audio_buffer.fill(0);
+        UpdateAudioStream(audio_stream, audio_buffer.data(), BUFFER_SIZE);
+      }
+    }
 
     const int display_width{chip8.hires ? 128 : 64};
     const int display_height{chip8.hires ? 64 : 32};
@@ -100,11 +134,11 @@ int main(int argc, char *argv[]) {
     }
 
     EndDrawing();
-
-    // reset draw flag after rendering
     chip8.draw_flag = false;
   }
 
+  UnloadAudioStream(audio_stream);
+  CloseAudioDevice();
   CloseWindow();
   return 0;
 }
