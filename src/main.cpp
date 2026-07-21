@@ -1,6 +1,7 @@
 #include "chip8.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -46,6 +47,13 @@ int main(int argc, char *argv[]) {
   InitWindow(128 * scale, 64 * scale, "CHIP-8");
   SetTargetFPS(60);
 
+  // XO-CHIP 4 color palette
+  // color is determined by which planes are active at a pixel
+  constexpr Color COLOR_BG{0x99, 0x66, 0x00, 0xFF}; // no planes active
+  constexpr Color COLOR_1{0xFF, 0xFF, 0xFF, 0xFF};  // plane 1 only
+  constexpr Color COLOR_2{0x00, 0x00, 0x00, 0xFF};  // plane 2 only
+  constexpr Color COLOR_3{0xFF, 0x00, 0x00, 0xFF};  // both planes active
+
   constexpr int CYCLES_PER_FRAME{10};
 
   while (!WindowShouldClose()) {
@@ -64,18 +72,39 @@ int main(int argc, char *argv[]) {
     if (chip8.sound_timer > 0)
       chip8.sound_timer--;
 
+    // always render every frame - raylib needs BeginDrawing/EndDrawing
+    // every frame to process events (including window close)
     const int display_width{chip8.hires ? 128 : 64};
     const int display_height{chip8.hires ? 64 : 32};
+    constexpr int plane_size{128 * 64};
 
     BeginDrawing();
-    ClearBackground(ORANGE);
+    ClearBackground(COLOR_BG);
 
-    for (int y{0}; y < display_height; ++y)
-      for (int x{0}; x < display_width; ++x)
-        if (chip8.display[y * display_width + x])
-          DrawRectangle(x * scale, y * scale, scale, scale, BLACK);
+    for (int y{0}; y < display_height; ++y) {
+      for (int x{0}; x < display_width; ++x) {
+        const int idx{y * display_width + x};
+
+        const uint8_t p1{chip8.display[idx]};
+        const uint8_t p2{chip8.display[plane_size + idx]};
+
+        Color color{COLOR_BG};
+        if (p1 && p2)
+          color = COLOR_3;
+        else if (p1)
+          color = COLOR_1;
+        else if (p2)
+          color = COLOR_2;
+
+        if (p1 || p2)
+          DrawRectangle(x * scale, y * scale, scale, scale, color);
+      }
+    }
 
     EndDrawing();
+
+    // reset draw flag after rendering
+    chip8.draw_flag = false;
   }
 
   CloseWindow();

@@ -53,7 +53,9 @@ bool loadRom(Chip8 &chip8, const std::string &filename) {
   ifs.seekg(0, std::ios::beg);
 
   // check if ROM wether ROM can fit in memory
-  constexpr auto max_rom_size{4096 - 0x200};
+  // in case of XO-CHIP this has to bumped from
+  // 4kb to 64kb
+  constexpr auto max_rom_size{65536 - 0x200};
   if (size > max_rom_size) {
     std::cerr << "ROM too larget to fit in memory (max" << max_rom_size
               << " bytes)\n";
@@ -76,18 +78,29 @@ bool loadRom(Chip8 &chip8, const std::string &filename) {
 void scrollDown(Chip8 &chip8, uint8_t pixels) {
   const int width{chip8.hires ? 128 : 64};
   const int height{chip8.hires ? 64 : 32};
+  const int plane_size{128 * 64};
 
-  // move row down by 'pixel' rows
-  for (int y{height - 1}; y >= pixels; --y) {
-    for (int x{0}; x < width; ++x) {
-      chip8.display[y * width + x] = chip8.display[(y - pixels) * width + x];
+  const int scroll_amount{chip8.hires ? pixels : pixels};
+
+  for (uint8_t plane{0}; plane < 2; ++plane) {
+    if (!(chip8.draw_plane & (1 << plane)))
+      continue;
+
+    const int offset{plane * plane_size};
+
+    // move row down by 'pixel' rows
+    for (int y{height - 1}; y >= scroll_amount; --y) {
+      for (int x{0}; x < width; ++x) {
+        chip8.display[offset + y * width + x] =
+            chip8.display[offset + (y - scroll_amount) * width + x];
+      }
     }
-  }
 
-  // clear top 'pixels' rows
-  for (int y{0}; y < pixels; ++y) {
-    for (int x{0}; x < width; ++x) {
-      chip8.display[y * width + x] = 0;
+    // clear top 'pixels' rows
+    for (int y{0}; y < scroll_amount; ++y) {
+      for (int x{0}; x < width; ++x) {
+        chip8.display[offset + y * width + x] = 0;
+      }
     }
   }
 }
@@ -95,15 +108,25 @@ void scrollDown(Chip8 &chip8, uint8_t pixels) {
 void scrollRight(Chip8 &chip8) {
   const int width{chip8.hires ? 128 : 64};
   const int height{chip8.hires ? 64 : 32};
+  const int plane_size{128 * 64};
 
-  // move columns right by 4 pixels
-  for (int y{0}; y < height; ++y) {
-    for (int x{width - 1}; x >= 4; --x) {
-      chip8.display[y * width + x] = chip8.display[y * width + (x - 4)];
-    }
-    // clear leftmost 4 pixels
-    for (int x{0}; x < 4; ++x) {
-      chip8.display[y * width + x] = 0;
+  for (uint8_t plane{0}; plane < 2; ++plane) {
+    if (!(chip8.draw_plane & (1 << plane)))
+      continue;
+
+    const int offset{plane * plane_size};
+
+    // move columns right by 4 pixels
+    for (int y{0}; y < height; ++y) {
+      for (int x{width - 1}; x >= 4; --x) {
+        chip8.display[offset + y * width + x] =
+            chip8.display[offset + y * width + (x - 4)];
+      }
+
+      // clear leftmost 4 pixels
+      for (int x{0}; x < 4; ++x) {
+        chip8.display[offset + y * width + x] = 0;
+      }
     }
   }
 }
@@ -111,15 +134,25 @@ void scrollRight(Chip8 &chip8) {
 void scrollLeft(Chip8 &chip8) {
   const int width{chip8.hires ? 128 : 64};
   const int height{chip8.hires ? 64 : 32};
+  const int plane_size{128 * 64};
 
-  // move columns left by 4 pixels
-  for (int y{0}; y < height; ++y) {
-    for (int x{0}; x < width - 4; ++x) {
-      chip8.display[y * width + x] = chip8.display[y * width + (x + 4)];
-    }
-    // clear rightmost 4 pixels
-    for (int x{width - 4}; x < width; ++x) {
-      chip8.display[y * width + x] = 0;
+  for (uint8_t plane{0}; plane < 2; ++plane) {
+    if (!(chip8.draw_plane & (1 << plane)))
+      continue;
+
+    const int offset{plane * plane_size};
+
+    // move columns left by 4 pixels
+    for (int y{0}; y < height; ++y) {
+      for (int x{0}; x < width - 4; ++x) {
+        chip8.display[offset + y * width + x] =
+            chip8.display[offset + y * width + (x + 4)];
+      }
+
+      // clear rightmost 4 pixels
+      for (int x{width - 4}; x < width; ++x) {
+        chip8.display[offset + y * width + x] = 0;
+      }
     }
   }
 }
@@ -154,8 +187,15 @@ void emulateCycle(Chip8 &chip8) {
     switch (opcode) {
     case 0x00E0:
       // 00E0 - clear screen
+      // in case of XO-CHIP only the selected plane
       // turn pixel off
-      chip8.display.fill(0);
+      for (uint8_t plane{0}; plane < 2; ++plane) {
+        if (!(chip8.draw_plane & (1 << plane)))
+          continue;
+        const int offset{plane * 128 * 64};
+        std::fill(chip8.display.begin() + offset,
+                  chip8.display.begin() + offset + 128 * 64, 0);
+      }
       LOG("CLS\n");
       break;
 
@@ -235,9 +275,31 @@ void emulateCycle(Chip8 &chip8) {
     break;
 
   case 0x5000:
-    // 5XYO - skip if VX == VY
-    if (chip8.V[x] == chip8.V[y])
-      chip8.PC += 2;
+    switch (opcode & 0x000Fu) {
+    case 0x0:
+      // 5XYO - skip if VX == VY
+      // this is part of original chip8 instructions
+      if (chip8.V[x] == chip8.V[y])
+        chip8.PC += 2;
+      break;
+
+    case 0x2:
+      // 0x5XY2 - store VX to VY in memory starting at I
+      // XO-CHIP instruction
+      for (uint8_t i{x}; i <= y; ++i)
+        chip8.memory[chip8.I + (i - x)] = chip8.V[i];
+      break;
+
+    case 0x3:
+      // 0x5XY3 - load VX to VY from memory starting at I
+      for (uint8_t i{x}; i <= y; ++i)
+        chip8.V[i] = chip8.memory[chip8.I + (i - x)];
+      break;
+
+    default:
+      std::cerr << "Unknown 0x5000 opcode : 0x" << std::hex << opcode << '\n';
+      break;
+    }
     break;
 
   case 0x6000:
@@ -282,11 +344,13 @@ void emulateCycle(Chip8 &chip8) {
       // 8XY4 - ADD
       // unlike 7XNN this will affect the
       // carry flag (VF Register).
-      const uint16_t sum{static_cast<uint16_t>(chip8.V[x] + chip8.V[y])};
+      const uint8_t vx{chip8.V[x]};
+      const uint8_t vy{chip8.V[y]};
+      const uint16_t sum{static_cast<uint16_t>(vx + vy)};
       // if the result is larget than 255, and overflows the
       // 8bit VX, flag register is set to 1
-      chip8.V[0xF] = (sum > 255u) ? 1 : 0;
       chip8.V[x] = static_cast<uint8_t>(sum & 0xFFu);
+      chip8.V[0xF] = (sum > 255u) ? 1 : 0;
       break;
     }
 
@@ -295,8 +359,8 @@ void emulateCycle(Chip8 &chip8) {
       // VF is NOT borrow
       const uint8_t vx{chip8.V[x]};
       const uint8_t vy{chip8.V[y]};
-      chip8.V[0xF] = (vx >= vy) ? 1 : 0;
       chip8.V[x] = vx - vy;
+      chip8.V[0xF] = (vx >= vy) ? 1 : 0;
       break;
     }
 
@@ -307,8 +371,8 @@ void emulateCycle(Chip8 &chip8) {
       // VF is NOT borrow
       const uint8_t vx{chip8.V[x]};
       const uint8_t vy{chip8.V[y]};
-      chip8.V[0xF] = (vy >= vx) ? 1 : 0;
       chip8.V[x] = vy - vx;
+      chip8.V[0xF] = (vy >= vx) ? 1 : 0;
       break;
     }
 
@@ -316,11 +380,10 @@ void emulateCycle(Chip8 &chip8) {
       // 8XY6 - VX >> = 1
       // VF = shifted out bit
       // in modern behaviour, we ignore VY
-      const uint8_t shifted{static_cast<uint8_t>(chip8.V[x] & 0x1u)};
-      // oouuugh this might be first time ligratures
-      // are making code less readable to me
-      chip8.V[x] >>= 1;
-      chip8.V[0xF] = shifted;
+      // XO-CHIP: use VY
+      const uint8_t val{chip8.V[y]};
+      chip8.V[x] = val >> 1;
+      chip8.V[0xF] = val & 0x1u;
       break;
     }
 
@@ -328,9 +391,9 @@ void emulateCycle(Chip8 &chip8) {
       // 8XYE - VX << = 1
       // VF = shifted out bit
       // in modern behaviour, we ignore VY
-      const uint8_t shifted{static_cast<uint8_t>((chip8.V[x] & 0x80u) >> 7)};
-      chip8.V[x] <<= 1;
-      chip8.V[0xF] = shifted;
+      const uint8_t val{chip8.V[y]};
+      chip8.V[x] = val << 1;
+      chip8.V[0xF] = (val & 0x80u) >> 7;
       break;
     }
 
@@ -356,7 +419,8 @@ void emulateCycle(Chip8 &chip8) {
     // BNNN - jump to differnt subroutines
     // this is another ambiguous instruction
     // so i decided with original behaviour
-    chip8.PC = nnn + chip8.V[x];
+    // XO-CHIP uses V0
+    chip8.PC = nnn + chip8.V[0];
     break;
 
   case 0xC000: {
@@ -370,6 +434,7 @@ void emulateCycle(Chip8 &chip8) {
 
   case 0xD000: {
     // DXYN - draw sprites at (VX, VY) with height N
+    // XO-CHIP: draws to selected bitplane(s)
     const int width{chip8.hires ? 128 : 64};
     const int height{chip8.hires ? 64 : 32};
 
@@ -378,73 +443,90 @@ void emulateCycle(Chip8 &chip8) {
 
     chip8.V[0xF] = 0;
 
-    if (n == 0 && chip8.hires) {
-      // 16x16 sprite
-      for (uint8_t row{0}; row < 16; ++row) {
-        const uint8_t byte1{chip8.memory[chip8.I + row * 2]};
-        const uint8_t byte2{chip8.memory[chip8.I + row * 2 + 1]};
+    // XO-CHIP: iterate over both planes, draw to selected ones
+    for (uint8_t plane{0}; plane < 2; ++plane) {
+      // skip if this bitplane is not selected
+      if (!(chip8.draw_plane & (1u << plane)))
+        continue;
 
-        for (uint8_t col{0}; col < 8; ++col) {
-          if (byte1 & (0x80u >> col)) {
-            const uint8_t screen_x{static_cast<uint8_t>((x_pos + col) % width)};
-            const uint8_t screen_y{
-                static_cast<uint8_t>((y_pos + row) % height)};
-            const uint16_t pixel_index{
-                static_cast<uint16_t>(screen_y * width + screen_x)};
+      // each plane is a full 128*64 block in the display array
+      const uint32_t plane_offset{static_cast<uint32_t>(plane * 128 * 64)};
 
-            if (chip8.display[pixel_index])
-              chip8.V[0xF] = 1;
-            chip8.display[pixel_index] ^= 1;
-          }
+      if (n == 0 && chip8.hires) {
+        // SUPER-CHIP/XO-CHIP: DXY0 in hires = 16x16 sprite
+        // reads 32 bytes: 2 bytes per row, 16 rows
+        for (uint8_t row{0}; row < 16; ++row) {
+          const uint8_t byte1{chip8.memory[chip8.I + row * 2]};
+          const uint8_t byte2{chip8.memory[chip8.I + row * 2 + 1]};
 
-          if (byte2 & (0x80u >> col)) {
-            const uint8_t screen_x{
-                static_cast<uint8_t>((x_pos + col + 8) % width)};
-            const uint8_t screen_y{
-                static_cast<uint8_t>((y_pos + row) % height)};
-            const uint16_t pixel_index{
-                static_cast<uint16_t>(screen_y * width + screen_x)};
+          for (uint8_t col{0}; col < 8; ++col) {
+            // first byte - left 8 pixels
+            if (byte1 & (0x80u >> col)) {
+              const uint8_t screen_x{
+                  static_cast<uint8_t>((x_pos + col) % width)};
+              const uint8_t screen_y{
+                  static_cast<uint8_t>((y_pos + row) % height)};
+              const uint32_t pixel_index{
+                  plane_offset +
+                  static_cast<uint32_t>(screen_y * width + screen_x)};
 
-            if (chip8.display[pixel_index] == 1)
-              chip8.V[0xF] = 1;
-            chip8.display[pixel_index] ^= 1;
+              if (chip8.display[pixel_index])
+                chip8.V[0xF] = 1;
+              chip8.display[pixel_index] ^= 1;
+            }
+
+            // second byte - right 8 pixels
+            if (byte2 & (0x80u >> col)) {
+              const uint8_t screen_x{
+                  static_cast<uint8_t>((x_pos + col + 8) % width)};
+              const uint8_t screen_y{
+                  static_cast<uint8_t>((y_pos + row) % height)};
+              const uint32_t pixel_index{
+                  plane_offset +
+                  static_cast<uint32_t>(screen_y * width + screen_x)};
+
+              if (chip8.display[pixel_index])
+                chip8.V[0xF] = 1;
+              chip8.display[pixel_index] ^= 1;
+            }
           }
         }
-      }
 
-    } else {
-      // normal 8xN sprite (or 8x16 if N=0 in low-res SCHIP mode)
-      const uint8_t sprite_height{static_cast<uint8_t>(n == 0 ? 16u : n)};
+      } else {
+        // normal 8xN sprite (CHIP-8/SUPER-CHIP/XO-CHIP)
+        // SUPER-CHIP: N=0 in lores = 8x16 sprite
+        const uint8_t sprite_height{static_cast<uint8_t>(n == 0 ? 16u : n)};
 
-      for (uint8_t row{0}; row < sprite_height; ++row) {
-        const uint8_t sprite_byte{chip8.memory[chip8.I + row]};
+        for (uint8_t row{0}; row < sprite_height; ++row) {
+          const uint8_t sprite_byte{chip8.memory[chip8.I + row]};
 
-        if (y_pos + row >= height)
-          break;
+          for (uint8_t col{0}; col < 8; ++col) {
+            if (sprite_byte & (0x80u >> col)) {
+              // XO-CHIP wraps coordinates instead of clipping
+              const uint8_t screen_x{
+                  static_cast<uint8_t>((x_pos + col) % width)};
+              const uint8_t screen_y{
+                  static_cast<uint8_t>((y_pos + row) % height)};
+              const uint32_t pixel_index{
+                  plane_offset +
+                  static_cast<uint32_t>(screen_y * width + screen_x)};
 
-        for (uint8_t col{0}; col < 8; ++col) {
-          if (x_pos + col >= width)
-            break;
+              // collision detected if pixel already on
+              if (chip8.display[pixel_index])
+                chip8.V[0xF] = 1;
 
-          if (sprite_byte & (0x80u >> col)) {
-            // wrap coordinates instead of clipping
-            const uint16_t pixel_index{
-                static_cast<uint16_t>((y_pos + row) * width + (x_pos + col))};
-
-            // if both sprite pixel and screen pixel are on, collision detected
-            if (chip8.display[pixel_index])
-              chip8.V[0xF] = 1;
-
-            // XOR the pixel
-            chip8.display[pixel_index] ^= 1;
+              // XOR the pixel onto the display
+              chip8.display[pixel_index] ^= 1;
+            }
           }
         }
       }
     }
 
+    chip8.draw_flag = true;
+
     LOG("DRW V" << std::hex << static_cast<int>(x) << ", V"
                 << static_cast<int>(y) << ", " << static_cast<int>(n) << '\n');
-
     break;
   }
 
@@ -467,7 +549,30 @@ void emulateCycle(Chip8 &chip8) {
     break;
 
   case 0xF000:
+    // F000 NNNN - long I load with 16 bit addr
+    // this is 4byte instruction, next 2 bytes are addr
+    // ductatping this outside the switch statement
+    if (opcode == 0xF000) {
+      chip8.I = static_cast<uint16_t>(
+          (chip8.memory[chip8.PC] << 8 | chip8.memory[chip8.PC + 1]));
+      chip8.PC += 2;
+      break;
+    }
+
     switch (opcode & 0x00FFu) {
+    case 0x01:
+      chip8.draw_plane = x;
+      break;
+
+    case 0x02:
+      for (uint8_t i{0}; i < 16; ++i)
+        chip8.audio_pattern[i] = chip8.memory[chip8.I + i];
+      break;
+
+    case 0x3A:
+      chip8.pitch = chip8.V[x];
+      break;
+
     case 0x07:
       // FX07 - sets VX to delay timer
       chip8.V[x] = chip8.delay_timer;
@@ -514,6 +619,8 @@ void emulateCycle(Chip8 &chip8) {
           chip8.PC -= 2;
         }
       }
+
+      break;
     }
 
     case 0x29:
@@ -535,16 +642,32 @@ void emulateCycle(Chip8 &chip8) {
 
     case 0x55:
       // FX55 - store V0 to in memory starting at I
-      // I is not modified in modern behaviour
+      // I *is* not modified in modern behaviour (XO-CHIP)
       for (uint8_t i{0}; i <= x; ++i)
         chip8.memory[chip8.I + i] = chip8.V[i];
+      chip8.I = chip8.I + x + 1;
       break;
 
     case 0x65:
       // FX65 - load V0 to VX from memory starting at I
-      // again, I is not modified in modern behaviour
+      // again, I *is* modified in modern behaviour (XO-CHIP)
       for (uint8_t i{0}; i <= x; ++i)
         chip8.V[i] = chip8.memory[chip8.I + i];
+      chip8.I = chip8.I + x + 1;
+      break;
+
+    case 0x75:
+      // FX75 - STORE V0 TO VX in RPL flag
+      // max X is 7 (8 flags total)
+      for (uint8_t i{0}; i <= std::min(x, static_cast<uint8_t>(7u)); ++i)
+        chip8.rpl_flags[i] = chip8.V[i];
+      break;
+
+    case 0x85:
+      // FX85 - load V0 to VX from RPL flags
+      // max X is 7 (8 flags total)
+      for (uint8_t i{0}; i <= std::min(x, static_cast<uint8_t>(7u)); ++i)
+        chip8.V[i] = chip8.rpl_flags[i];
       break;
     }
 

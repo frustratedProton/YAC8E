@@ -72,4 +72,6 @@ https://en.wikipedia.org/wiki/CHIP-8
 
 https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 
+https://johnearnest.github.io/Octo/docs/XO-ChipSpecification.html
+
 https://github.com/raysan5/raylib
