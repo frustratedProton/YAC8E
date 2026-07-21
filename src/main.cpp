@@ -72,8 +72,6 @@ int main(int argc, char *argv[]) {
     if (chip8.sound_timer > 0)
       chip8.sound_timer--;
 
-    // always render every frame - raylib needs BeginDrawing/EndDrawing
-    // every frame to process events (including window close)
     const int display_width{chip8.hires ? 128 : 64};
     const int display_height{chip8.hires ? 64 : 32};
     constexpr int plane_size{128 * 64};

@@ -41,4 +41,5 @@ bool loadRom(Chip8 &chip8, const std::string &filename);
 void scrollDown(Chip8 &chip8, uint8_t pixels);
 void scrollRight(Chip8 &chip8);
 void scrollLeft(Chip8 &chip8);
+void scrollUp(Chip8 &chip8, uint8_t pixels);
 void emulateCycle(Chip8 &chip8);

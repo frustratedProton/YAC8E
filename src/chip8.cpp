@@ -157,6 +157,34 @@ void scrollLeft(Chip8 &chip8) {
   }
 }
 
+void scrollUp(Chip8 &chip8, uint8_t pixels) {
+  const int width{chip8.hires ? 128 : 64};
+  const int height{chip8.hires ? 64 : 32};
+  constexpr int plane_size{128 * 64};
+
+  for (uint8_t plane{0}; plane < 2; ++plane) {
+    if (!(chip8.draw_plane & (1 << plane)))
+      continue;
+
+    const int offset{plane * plane_size};
+
+    // move rows up by 'pixels' rows
+    for (int y{0}; y < height - pixels; ++y) {
+      for (int x{0}; x < width; ++x) {
+        chip8.display[offset + y * width + x] =
+            chip8.display[offset + (y + pixels) * width + x];
+      }
+    }
+
+    // clear bottom 'pixels' rows
+    for (int y{height - pixels}; y < height; ++y) {
+      for (int x{0}; x < width; ++x) {
+        chip8.display[offset + y * width + x] = 0;
+      }
+    }
+  }
+}
+
 // fetch/decode/execute loop
 void emulateCycle(Chip8 &chip8) {
   // fetch operation
@@ -226,11 +254,16 @@ void emulateCycle(Chip8 &chip8) {
       break;
 
     default:
-      // 00CN - scoll down N pixels (TODO)
       if ((opcode & 0x00F0) == 0x00C0) {
+        // 00CN - scroll down N pixels (SUPER-CHIP)
         const uint8_t scroll_n{static_cast<uint8_t>(opcode & 0x000F)};
         scrollDown(chip8, scroll_n);
         LOG("SCROLL DOWN " << static_cast<int>(scroll_n) << '\n');
+      } else if ((opcode & 0x00F0) == 0x00D0) {
+        // 00DN - scroll up N pixels (XO-CHIP)
+        const uint8_t scroll_n{static_cast<uint8_t>(opcode & 0x000F)};
+        scrollUp(chip8, scroll_n);
+        LOG("SCROLL UP " << static_cast<int>(scroll_n) << '\n');
       } else if (opcode == 0x00FB) {
         // 00FB - scroll right
         scrollRight(chip8);
