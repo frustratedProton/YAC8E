@@ -1,17 +1,26 @@
-# Yet Another Chip-8 Emulator [WIP]
+# Yet Another Chip-8 Emulator
 
-A simple CHIP-8 emulator written in `C++` using `raylib`. This project was built to learn about emulator development and computer architecture by implementing the CHIP-8 virtual machine from scratch.
+A simple CHIP-8 emulator written in `C++` using `raylib`. This project was built to learn about emulator developmentand has since grown to support multiple CHIP-8 variants, including Super-CHIP (SCHIP) and XO-CHIP.
 
 <p align="center">
   <img src="assets/image.png" alt="Logo" width="300" height="200">
 </p>
+
+<p align="center">
+  <img src="assets/tetris.png" alt="Logo" width="300" height="200">
+</p>
+
+<p align="center">
+  <img src="assets/flags.png" alt="Logo" width="300" height="200">
+</p>
+
 
 ## Architecture
 
 ### Memory
 
 1. Had 4096 (`0x1000`) memory locations, all of which are 8 bits  
-2. Chip-8 interpreter occupies the first 512 bytes of memory on these machines  
+3. Chip-8 interpreter occupies the first 512 bytes of memory on these machines  
 
 ### Registers
 
@@ -65,6 +74,98 @@ A simple CHIP-8 emulator written in `C++` using `raylib`. This project was built
 
 1. Has 35 opcodes which are 2 bytes long and stored in big-endian  
      
+
+## Super-CHIP Changes
+
+Super-CHIP (SCHIP) extends the original CHIP-8 with several new features:
+
+### Display
+- High-resolution mode (`128×64`)
+- Low-resolution compatibility mode (`64×32`)
+- Screen scrolling instructions
+  - Scroll right
+  - Scroll left
+  - Scroll down
+
+## XO-CHIP Changes
+
+XO-CHIP further extends Super-CHIP with additional graphics, memory, and audio capabilities.
+
+### Memory
+- Expanded address space (up to 64 KB)
+- Supports loading larger programs.
+
+### Display
+- Two graphics planes
+- Plane selection instructions
+- Extended sprite drawing
+
+### Audio
+- 16-byte audio pattern buffer
+- Programmable sound playback
+
+> Audio stuff is tested exclusively on windows, cause i couldnt get PulseAudio to be working on WSL2.
+
+## Build
+
+### Prerequisites
+
+- C++20 compatible compiler (`g++`)
+- `make`
+- `raylib`
+
+The Makefile assumes raylib is built from source and located at:
+
+```
+~/code/raylib
+```
+
+If your installation is elsewhere, update the `INCLUDES` and `LIBS` variables in the Makefile.
+
+### Compile
+
+```bash
+make
+```
+
+The executable will be created as:
+
+```
+build/main
+```
+
+### Run
+
+Run with the default ROM:
+
+```bash
+make run
+```
+
+Run a specific ROM:
+
+```bash
+make run ROM="roms/PONG.ch8"
+```
+
+or execute the binary directly:
+
+```bash
+./build/main "roms/PONG.ch8"
+```
+
+### Debug Build
+
+```bash
+make debug
+```
+
+### Clean
+
+```bash
+make clean
+```
+
 ### REFERENCES
 http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
 
@@ -75,3 +176,5 @@ https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 https://johnearnest.github.io/Octo/docs/XO-ChipSpecification.html
 
 https://github.com/raysan5/raylib
+
+https://github.com/Timendus/chip8-test-suite (super helpful)
